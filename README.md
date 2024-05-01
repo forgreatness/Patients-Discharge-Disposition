@@ -64,10 +64,11 @@ An encounter can sometime have multiple procedure, we can also establish a proce
 7. Feature selected the encounters data into a variable ready for splitting
 8. Split data
 9. Feature Scale data
+10. Feature sampled data
 
 ### Model Integration
 > [!NOTE]
-> Try different model that are good for regression on the model (avoid linear since we know right away its not beneficial)
+> Try different model that are good for regression on the data (avoid linear since we know right away its not beneficial)
 
 
 **Other can be consider**
