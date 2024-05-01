@@ -1,0 +1,24 @@
+import numpy as np
+
+# Example procedures data
+procedures = ['Procedure A', 'Procedure B', 'Procedure C']
+
+# Procedure types for each encounter (example)
+encounter_procedures = [
+    ['Procedure A', 'Procedure C'],
+    ['Procedure B'],
+    ['Procedure A', 'Procedure B', 'Procedure C']
+]
+
+# One-hot encode procedures for each encounter
+num_procedures = len(procedures)
+encoded_data = []
+for encounter in encounter_procedures:
+    encoded_encounter = np.zeros(num_procedures)
+    for procedure in encounter:
+        index = procedures.index(procedure)
+        encoded_encounter[index] = 1
+    encoded_data.append(encoded_encounter)
+
+# Convert to numpy array
+encoded_data = np.array(encoded_data)
