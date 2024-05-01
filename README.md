@@ -64,7 +64,7 @@ An encounter can sometime have multiple procedure, we can also establish a proce
 7. Feature selected the encounters data into a variable ready for splitting
 8. Split data
 9. Feature Scale data
-10. Feature sampled data
+10. Data Sampling using SMOTE
 
 ### Model Integration
 > [!NOTE]
