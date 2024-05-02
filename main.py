@@ -291,7 +291,7 @@ for index, row in merged_data.iterrows():
     condition_codes_list.append(condition_codes)
 
 # Add a new column named 'Condition Codes' to the merged_data dataframe
-merged_data['Condition Codes'] = condition_codes_list
+merged_data['Conditions'] = condition_codes_list
 
 # Initialize an empty list to store the procedure types for each row
 procedure_types_list = []
@@ -308,7 +308,7 @@ for index, row in merged_data.iterrows():
     procedure_types_list.append(procedure_types)
 
 # Add a new column named 'Procedure Types' to the merged_data dataframe
-merged_data['Procedure Types'] = procedure_types_list
+merged_data['Procedures'] = procedure_types_list
 
 """    Data Preprocessing     """
 # Step #1: Replace any data that is null | undefined | empty with nan
@@ -341,7 +341,7 @@ for index, row in merged_data.iterrows():
     
     # Assign the age to a new column in the DataFrame
     merged_data.at[index, 'Age'] = int(age)
-    
+
 # Convert the 'Age' column to integer type
 merged_data['Age'] = merged_data['Age'].astype(int)
 
@@ -350,16 +350,56 @@ merged_data['Age'] = merged_data['Age'].astype(int)
 merged_data['Gender'] = label_encoder.fit_transform(merged_data['Gender'])
 merged_data['Service Type'] = label_encoder.fit_transform(merged_data['Service Type'])
 merged_data['Ethnicity'] = label_encoder.fit_transform(merged_data['Ethnicity'])
+merged_data.reset_index(drop=True, inplace=True)
 
 # Step 6: Encode the array of conditions and array of procedures
+unique_conditions = list(set(condition for sublist in merged_data['Conditions'] for condition in sublist))
+
+# Create a binary matrix for one-hot encoding
+one_hot_encoded = pd.DataFrame(0, columns=unique_conditions, index=merged_data.index)
+
+# Loop through each encounter and fill the one-hot encoded matrix
+for idx, encounter_conditions in enumerate(merged_data['Conditions']):
+    if encounter_conditions:  # Check if there are conditions for this encounter
+        for condition in encounter_conditions:
+            one_hot_encoded.at[idx, condition] = 1
+
+# Convert one_hot_encoded to a list of lists
+encoded_conditions_list = one_hot_encoded.values.tolist()
+# Add the list of encoded conditions to merged_data
+merged_data['Encoded_Conditions'] = encoded_conditions_list
+# Drop the original 'Conditions' column
+merged_data.drop('Conditions', axis=1, inplace=True)
+
+# ####### Encode the array of procedures #######
+unique_procedures = list(set(procedure for sublist in merged_data['Procedures'] for procedure in sublist))
+
+# Create a binary matrix for one-hot encoding
+one_hot_encoded_procedures = pd.DataFrame(0, columns=unique_procedures, index=merged_data.index)
+
+# Loop through each encounter and fill the one-hot encoded matrix
+for idx, encounter_procedures in enumerate(merged_data['Procedures']):
+    if encounter_procedures:  # Check if there are conditions for this encounter
+        for procedure in encounter_procedures:
+            one_hot_encoded_procedures.at[idx, procedure] = 1
+
+
+# Convert one_hot_encoded to a list of lists
+encoded_procedures_list = one_hot_encoded_procedures.values.tolist()
+
+# Add the list of encoded conditions to merged_data
+merged_data['Encoded_Procedures'] = encoded_conditions_list
+
+# Drop the original 'Conditions' column
+merged_data.drop('Procedures', axis=1, inplace=True)
 
 
 # Step 7: Feature selection
-
+selectedFeatures = np.array(['Ethnicity','Duration of Care','Age','Encoded_Conditions','Encoded_Procedures', 'Service Type', 'Gender'])
+preprocessedEncounters = merged_data[selectedFeatures]
 
 # Step 8: Write it to final data then we can smote later and feature scale later
-
-
+preprocessedEncounters.to_csv('finalEncounterData.csv')
 
 
 # # If you want to keep only the integer part of the age
