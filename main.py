@@ -2,6 +2,12 @@ import json
 import csv
 import glob
 import pandas as pd
+import numpy as np
+
+from sklearn.preprocessing import LabelEncoder
+from datetime import datetime
+
+label_encoder = LabelEncoder()
 
 # List all encounter files
 encounter_files = glob.glob("./data/encounters/*.ndjson")
@@ -64,6 +70,7 @@ with open(csv_file, mode='w', newline='') as f:
         })
         
 encounters_df = pd.DataFrame(parsedEncountersData) #convert to dataframe
+encounters_df = encounters_df.drop_duplicates(subset=['Encounter ID']) #remove duplicates
 
 
 """    Read Procedures Data    """
@@ -129,9 +136,24 @@ with open(csv_file, mode='w', newline='') as file:
         })
 
 procedures_df = pd.DataFrame(parsedProceduresData) #convert to dataframe
+procedures_df = procedures_df.drop_duplicates(subset=['Procedure ID']) #remove duplicates
 
 
 """    Read Patients Data    """
+# Function to parse ethnicity from the patient data
+def parse_ethnicity(patient):
+    """
+    Parse ethnicity information from patient data.
+    """
+    ethnicity = None
+    extensions = patient.get('extension', [])
+    for ext in extensions:
+        if ext.get('url') == 'http://hl7.org/fhir/us/core/StructureDefinition/us-core-ethnicity':
+            ethnicity_ext = ext.get('extension', [])
+            for eth_ext in ethnicity_ext:
+                if eth_ext.get('url') == 'Text':
+                    ethnicity = eth_ext.get('valueString', None)
+    return ethnicity
 
 # List all patient files
 patient_files = glob.glob("./data/patients/1.Patient*.ndjson")
@@ -152,7 +174,7 @@ for file in patient_files:
 
 # Define CSV file and fieldnames
 csv_file = "patients.csv"
-fieldnames = ['Patient ID', 'Patient Name', 'Gender', 'Birth Date', 'Address']
+fieldnames = ['Patient ID', 'Patient Name', 'Gender', 'Birth Date', 'Address', 'Ethnicity']
 parsedPatientsData = []
 
 # Write data to CSV file
@@ -168,6 +190,8 @@ with open(csv_file, mode='w', newline='') as f:
         gender = patient.get('gender', '')
         birth_date = patient.get('birthDate', '')
         address = ', '.join(patient.get('address', [{}])[0].get('line', []))
+        ethnicity = parse_ethnicity(patient)  # Parse ethnicity
+
 
         # Write data to CSV
         writer.writerow({
@@ -175,7 +199,8 @@ with open(csv_file, mode='w', newline='') as f:
             'Patient Name': patient_name,
             'Gender': gender,
             'Birth Date': birth_date,
-            'Address': address
+            'Address': address,
+            'Ethnicity': ethnicity
         })
 
         parsedPatientsData.append({
@@ -183,10 +208,12 @@ with open(csv_file, mode='w', newline='') as f:
             'Patient Name': patient_name,
             'Gender': gender,
             'Birth Date': birth_date,
-            'Address': address
+            'Address': address,
+            'Ethnicity': ethnicity
         })
         
 patients_df = pd.DataFrame(parsedPatientsData) #convert to dataframe
+patients_df = patients_df.drop_duplicates(subset=['Patient ID']) #remove duplicates
 
 """       Read Conditions data        """
 
@@ -244,18 +271,148 @@ with open(csv_file, mode='w', newline='') as f:
         })
 
 conditions_df = pd.DataFrame(parsedConditionsData) #convert to dataframe
-
-
-# Merge encounters with procedures
-encounters_procedures_df = pd.merge(encounters_df, procedures_df, on=['Encounter ID', 'Patient ID'], how='left')
+conditions_df = conditions_df.drop_duplicates(subset=['Condition ID']) #remove duplicates
 
 # Merge encounters with patients
-encounters_patients_df = pd.merge(encounters_procedures_df, patients_df, on='Patient ID', how='left')
+merged_data = pd.merge(encounters_df, patients_df, on='Patient ID', how='left')
 
-# Merge encounters with conditions
-merged_data = pd.merge(encounters_patients_df, conditions_df, on='Patient ID', how='left')
+# Initialize an empty list to store the condition codes for each row
+condition_codes_list = []
 
-merged_data.to_csv('mergedEncountersData.csv', index=False)
+# Iterate through each row in the merged_data dataframe
+for index, row in merged_data.iterrows():
+    # Filter conditions dataframe based on the current patient ID
+    patient_conditions = conditions_df[conditions_df['Patient ID'] == row['Patient ID']]
+    
+    # Extract relevant condition codes and store them in a list
+    condition_codes = patient_conditions['Code'].tolist()
+    
+    # Append the list of condition codes to the condition_codes_list
+    condition_codes_list.append(condition_codes)
+
+# Add a new column named 'Condition Codes' to the merged_data dataframe
+merged_data['Condition Codes'] = condition_codes_list
+
+# Initialize an empty list to store the procedure types for each row
+procedure_types_list = []
+
+# Iterate through each row in the merged_data dataframe
+for index, row in merged_data.iterrows():
+    # Filter procedures dataframe based on the current patient ID
+    patient_procedures = procedures_df[procedures_df['Patient ID'] == row['Patient ID']]
+    
+    # Extract relevant procedure types and store them in a list
+    procedure_types = patient_procedures['Procedure Type'].tolist()
+    
+    # Append the list of procedure types to the procedure_types_list
+    procedure_types_list.append(procedure_types)
+
+# Add a new column named 'Procedure Types' to the merged_data dataframe
+merged_data['Procedure Types'] = procedure_types_list
+
+"""    Data Preprocessing     """
+# Step #1: Replace any data that is null | undefined | empty with nan
+merged_data.replace('?', np.nan, inplace=True)
+nanCountPerFeature = merged_data.isna().sum()
+featuresHavingTooMuchNan = nanCountPerFeature[nanCountPerFeature > 50].index.values
+merged_data.drop(featuresHavingTooMuchNan, axis=1, inplace=True)
+
+# Step #2: Remove all rows with nan data
+merged_data = merged_data.dropna() #remove all rows where there is a column with nan value
+
+# Step #3: Convert encounter start date and encounter end date to duration of care
+# Convert 'Start Date' and 'End Date' to datetime objects
+# Convert 'Start Date' and 'End Date' to datetime objects
+merged_data['Start Date'] = pd.to_datetime(merged_data['Start Date'])
+merged_data['End Date'] = pd.to_datetime(merged_data['End Date'])
+
+# Calculate duration of care in days
+merged_data['Duration of Care'] = (merged_data['End Date'] - merged_data['Start Date'])
+merged_data['Duration of Care'] = merged_data['Duration of Care'].apply(lambda x: x.days)
+
+# #Step #4 Convert the Birth Date to age
+for index, row in merged_data.iterrows():
+    # Convert birth date string to datetime object
+    birth_date = datetime.strptime(row['Birth Date'], "%Y-%m-%d")
+    
+    # Calculate age
+    current_date = datetime.now()
+    age = current_date.year - birth_date.year - ((current_date.month, current_date.day) < (birth_date.month, birth_date.day))
+    
+    # Assign the age to a new column in the DataFrame
+    merged_data.at[index, 'Age'] = int(age)
+    
+# Convert the 'Age' column to integer type
+merged_data['Age'] = merged_data['Age'].astype(int)
+
+# Step 5: Label encode the gender
+# Fit and transform the 'Gender' and 'Service Type' column
+merged_data['Gender'] = label_encoder.fit_transform(merged_data['Gender'])
+merged_data['Service Type'] = label_encoder.fit_transform(merged_data['Service Type'])
+merged_data['Ethnicity'] = label_encoder.fit_transform(merged_data['Ethnicity'])
+
+# Step 6: Encode the array of conditions and array of procedures
+
+
+# Step 7: Feature selection
+
+
+# Step 8: Write it to final data then we can smote later and feature scale later
+
+
+
+
+# # If you want to keep only the integer part of the age
+# # merged_data['Age'] = merged_data['Age'].astype(int)
+
+# # Drop the 'Birth Date' column if you no longer need it
+# merged_data.drop(columns=['Birth Date'], inplace=True)
+
+# # Step #5: Feature Select only needed features using domain knowledge
+# selectedFeatures = np.array(['Service Type'])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # # List all observation files

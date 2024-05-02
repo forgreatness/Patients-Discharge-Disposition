@@ -43,7 +43,7 @@ An encounter can sometime have multiple procedure, we can also establish a proce
 **Overall Metrics**
 - Age
 - Gender
-- race
+- Ethnicity
 - Time of Care
 - Service Type
 - List of Condition (encoded)
